@@ -23,7 +23,7 @@ Ho creato un generatore automatico per te:
     -   **Chiave PUBBLICA**: Copiala e incollala nel tuo **Profilo GitHub** (**Settings > SSH and GPG keys > New SSH key**).
     -   **Chiave PRIVATA**: Copiala e incollala nei **Secret del Repository** (**Settings > Secrets > Actions > New repository secret**) chiamandolo `SSH_PRIVATE_KEY`.
 
-#### Metodo B: Da Terminale (Se hai un PC/Raspberry) 💻
+#### Metodo B: Da Terminale PER UTENTI ESPERTI (Se hai un PC/Raspberry) 💻
 1.  **Genera la chiave**:
     ```bash
     ssh-keygen -t ed25519 -C "tua-email@github.com"
