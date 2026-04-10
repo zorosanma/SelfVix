@@ -19,7 +19,9 @@ Ho creato un generatore automatico per te:
 3.  Clicca sul pulsante grigio **"Run workflow"** e poi su **"Run workflow"** (verde).
 4.  Attendi qualche secondo che l'azione finisca (cerchio verde).
 5.  Clicca sul nome dell'azione appena terminata e apri lo step **"📋 COPIA LE TUE CHIAVI"**.
-6.  Troverai sia la **Chiave Pubblica** che la **Privata** pronte da copiare!
+6.  Troverai due blocchi:
+    -   **Chiave PUBBLICA**: Copiala e incollala nel tuo **Profilo GitHub** (**Settings > SSH and GPG keys > New SSH key**).
+    -   **Chiave PRIVATA**: Copiala e incollala nei **Secret del Repository** (**Settings > Secrets > Actions > New repository secret**) chiamandolo `SSH_PRIVATE_KEY`.
 
 #### Metodo B: Da Terminale (Se hai un PC/Raspberry) 💻
 1.  **Genera la chiave**:
