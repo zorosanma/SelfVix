@@ -74,3 +74,4 @@ L'addon sarà accessibile su `http://localhost:7000`.
 ## Note Tecniche
 L'addon utilizza **AnimeMapping** per convertire gli ID di Kitsu nei percorsi corrispondenti di AnimeUnity, garantendo che anche gli anime siano sempre aggiornati e riproducibili via VixCloud.
 test
+test
