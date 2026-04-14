@@ -17,7 +17,18 @@ Addon leggero e standalone per Stremio che estrae e riproduce contenuti da VixSr
 
 ## Istruzioni per il Deploy
 
+PRIMA DI TUTTO FARE IL FORK E MODIFICARE IL DOCKER FILE:
+
+[VIDEO
+](https://www.youtube.com/watch?v=nnhwo0C5x3I
+)
+
 ### 1. Deploy su Koyeb (Scelta consigliata per stabilità)
+
+[VIDEO
+](https://www.youtube.com/watch?v=IXEi81ONdNo
+)
+
 Koyeb è un'ottima alternativa a Render, più veloce e senza il "periodo di sospensione" (sleep) del piano gratuito.
 
 1.  Crea un account su [Koyeb.com](https://www.koyeb.com/).
@@ -29,17 +40,27 @@ Koyeb è un'ottima alternativa a Render, più veloce e senza il "periodo di sosp
     -   **Port**: Imposta `7000`.
 5.  Clicca su **Deploy**. L'addon sarà online in pochi minuti.
 
-### 3. Deploy su Hugging Face Spaces (Gratuito)
+
+
+### 2. Deploy su Hugging Face Spaces (Gratuito)
+
+[VIDEO
+](https://www.youtube.com/watch?v=Ti2BNDjm0ns
+)
+
 Ottimo come backup gratuito.
 
 1.  Crea un nuovo **Space** su [Hugging Face](https://huggingface.co/spaces).
 2.  Scegli **Docker** come SDK e il template **Blank**.
-3.  Carica i file del progetto (tramite interfaccia web o Git, FATE IL FORK DEL PROGETTO E RINOMINATE DOCKER.HF con il vostro user GITHUB!).
-4.  **Importante**: Hugging Face cerca un file chiamato esattamente `Dockerfile`.
-    -   Rinomina `Dockerfile.hf` in `Dockerfile` durante il caricamento o copia il suo contenuto in un nuovo file `Dockerfile` nella root dello Space.
+3.  Carica il dockerfile come da video, FATE IL FORK DEL PROGETTO E RINOMINATE DOCKER.HF con il vostro user GITHUB!).
+4.  Prendere il link embed!
 5.  Lo Space si avvierà automaticamente sulla porta `7860`.
 
-### 4. Deploy su Vercel (Velocissimo)
+### 3. Deploy su Vercel (Velocissimo)
+
+[VIDEO
+](https://www.youtube.com/watch?v=TP3_sbt94Ag&feature=youtu.be)
+
 Dato che il progetto include i file `vercel.json` e `api/index.ts`, puoi ospitarlo come Serverless Function.
 
 1.  Vai su [Vercel.com](https://vercel.com/) e importa il tuo repository GitHub.
@@ -47,7 +68,6 @@ Dato che il progetto include i file `vercel.json` e `api/index.ts`, puoi ospitar
 3.  Clicca su **Deploy**.
 4.  L'addon sarà accessibile su `https://tua-app.vercel.app/manifest.json`.
 
-*Nota: Vercel ha limiti di banda sul piano gratuito, usalo con cautela per lo streaming intenso.*
 
 ---
 
