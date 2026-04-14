@@ -310,9 +310,13 @@ app.get('/proxy/hls/segment.ts', async (req: any, res: any) => {
 export default app;
 
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
-    const port = process.env.PORT || 7000;
+    const port = process.env.PORT;
+
+    if (!port) {
+        throw new Error("PORT not provided by environment");
+    }
+
     app.listen(port, "0.0.0.0", () => {
-        console.log(`Vix Simple Addon running at http://127.0.0.1:${port}`);
-        console.log(`Manifest: http://127.0.0.1:${port}/manifest.json`);
+        console.log(`Addon running on ${port}`);
     });
 }
