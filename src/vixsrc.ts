@@ -1,140 +1,149 @@
+import * as cheerio from 'cheerio';
+import { request } from 'undici';
+import { config } from './config';
+import { makeProxyToken, VIXSRC_HEADERS } from './proxy';
+
 /**
- * HLS Proxy helpers — shared between addon.ts, vixsrc.ts, vixcloud.ts
- *
- * Uses a server-side header cache so proxy tokens stay short.
- * Without this, every segment URL embeds the full CDN URL + all headers (~1500 chars)
- * which exceeds URL length limits in many HLS players.
+ * Resolve the current embed URL through VixSrc JSON API.
  */
+async function getEmbedUrlFromApi(tmdbId: string, season?: string, episode?: string): Promise<string | null> {
+    const siteOrigin = `https://${config.vixsrcDomain}`;
+    let apiPath = "";
 
-export const VIXSRC_HEADERS: Record<string, string> = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
-    'Connection': 'keep-alive',
-    'Referer': 'https://vixsrc.to/'
-};
-
-export const VIXCLOUD_HEADERS: Record<string, string> = {
-    'Accept': '*/*',
-    'Connection': 'keep-alive',
-    'Cache-Control': 'no-cache',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0'
-};
-
-// ── Header Cache: store headers server-side, reference by short ID ──
-const headerCache = new Map<string, { headers: Record<string, string>; expire: number }>();
-let headerIdCounter = 0;
-
-function registerHeaders(headers: Record<string, string>, ttlMs: number): string {
-    // Reuse existing ID if same headers already cached
-    for (const [id, entry] of headerCache) {
-        if (entry.expire > Date.now() && JSON.stringify(entry.headers) === JSON.stringify(headers)) {
-            return id;
-        }
+    if (season && episode) {
+        apiPath = `/api/tv/${tmdbId}/${season}/${episode}`;
+    } else {
+        apiPath = `/api/movie/${tmdbId}`;
     }
-    const id = 'h' + (++headerIdCounter);
-    headerCache.set(id, { headers, expire: Date.now() + ttlMs });
-    return id;
-}
 
-function lookupHeaders(id: string): Record<string, string> | null {
-    const entry = headerCache.get(id);
-    if (!entry || entry.expire < Date.now()) {
-        headerCache.delete(id);
-        return null;
-    }
-    return entry.headers;
-}
+    const apiUrl = `${siteOrigin}${apiPath}`;
+    console.log(`[VixSrc] Fetching embed via API: ${apiUrl}`);
 
-// Cleanup expired entries periodically
-setInterval(() => {
-    const now = Date.now();
-    for (const [id, entry] of headerCache) {
-        if (entry.expire < now) headerCache.delete(id);
-    }
-}, 10 * 60 * 1000);
-
-export function makeProxyToken(url: string, headers: Record<string, string>, ttlMs: number = 6 * 3600 * 1000): string {
-    const hid = registerHeaders(headers, ttlMs);
-    const payload = {
-        u: url,
-        hid,
-        e: Date.now() + ttlMs
-    };
-    return Buffer.from(JSON.stringify(payload)).toString('base64url');
-}
-
-export function decodeProxyToken(token: string): { u: string; h: Record<string, string>; e: number } | null {
     try {
-        const raw = JSON.parse(Buffer.from(token, 'base64url').toString('utf8'));
-        // Support both old format (h: {...}) and new format (hid: "h1")
-        let headers: Record<string, string>;
-        if (raw.hid) {
-            const cached = lookupHeaders(raw.hid);
-            if (!cached) {
-                // Fallback: infer headers from URL when cache is lost (serverless restart)
-                const url = raw.u || '';
-                if (url.includes('vixsrc.to') || url.includes('rabbitstream')) {
-                    headers = { ...VIXSRC_HEADERS };
-                } else if (url.includes('vixcloud') || url.includes('animeunity')) {
-                    headers = { ...VIXCLOUD_HEADERS };
-                } else {
-                    // Generic headers for CinemaCity CDN etc
-                    headers = {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                        'Accept': '*/*',
-                        'Connection': 'keep-alive'
-                    };
-                }
-                console.log(`[Proxy] Header cache miss for ${raw.hid}, using fallback for: ${url.substring(0, 60)}`);
-            } else {
-                headers = cached;
+        const { body, statusCode } = await request(apiUrl, {
+            headers: {
+                ...VIXSRC_HEADERS,
+                'Accept': 'application/json, text/plain, */*',
+                'Referer': `${siteOrigin}/`
             }
-        } else {
-            headers = raw.h || {};
+        });
+
+        if (statusCode !== 200) {
+            console.log(`[VixSrc] API responded with status ${statusCode}`);
+            return null;
         }
-        return { u: raw.u, h: headers, e: raw.e || 0 };
-    } catch {
+
+        const data: any = await body.json();
+        const embedPath = data?.src;
+        if (!embedPath) {
+            console.log(`[VixSrc] No 'src' field in API response`);
+            return null;
+        }
+
+        return embedPath.startsWith('http') ? embedPath : `${siteOrigin}${embedPath}`;
+    } catch (err) {
+        console.error(`[VixSrc] API error:`, err);
         return null;
     }
 }
 
-export function resolveUrl(base: string, relative: string): string {
-    if (relative.startsWith('http://') || relative.startsWith('https://')) return relative;
+export async function getVixSrcStreams(tmdbId: string, season?: string, episode?: string, preferredLang?: string): Promise<{name: string, title: string, url: string}[]> {
     try {
-        return new URL(relative, base).toString();
-    } catch {
-        const baseUrl = new URL(base);
-        if (relative.startsWith('/')) {
-            return `${baseUrl.origin}${relative}`;
+        const siteOrigin = `https://${config.vixsrcDomain}`;
+        
+        // 1. Resolve embed URL through API
+        const embedUrl = await getEmbedUrlFromApi(tmdbId, season, episode);
+        if (!embedUrl) {
+            console.log("[VixSrc] Failed to resolve embed URL");
+            return [];
         }
-        const basePath = baseUrl.pathname.substring(0, baseUrl.pathname.lastIndexOf('/') + 1);
-        return `${baseUrl.origin}${basePath}${relative}`;
-    }
-}
 
-export function getAddonBase(req: any): string {
-    const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
-    let host = req.headers['x-forwarded-host'] || req.headers.host || req.get('host');
-    
-    // If the host is just the internal app name (no dots), append the BeamUp domain.
-    // BeamUp app names usually look like c15c09a3abc2-svix. We only append the domain
-    // if it matches this pattern so that it doesn't interfere with Render or local dev.
-    if (host && !host.includes('.') && host !== 'localhost' && process.env.BEAMUP_PROJECT_NAME) {
-        // If we have an environment variable from BeamUp, we can definitely append
-        host = `${host}.baby-beamup.club`;
-    } else if (host && !host.includes('.') && host !== 'localhost') {
-        // Fallback: append ONLY if it looks like a typical dokku internal name
-        // (starts with alphanumeric, has an internal hyphen, etc.)
-        if (/^[a-z0-9]+-[a-z0-9]+$/i.test(host)) {
-            host = `${host}.baby-beamup.club`;
+        console.log("[VixSrc] Embed URL resolved:", embedUrl);
+
+        // 2. Fetch embed page and extract parameters
+        const { body, statusCode } = await request(embedUrl, {
+            headers: {
+                ...VIXSRC_HEADERS,
+                'Referer': `${siteOrigin}/`
+            }
+        });
+
+        if (statusCode !== 200) {
+            console.log(`[VixSrc] Embed page fetch failed: ${statusCode}`);
+            return [];
         }
+
+        const html = await body.text();
+        const $ = cheerio.load(html);
+
+        // Find the script containing window.masterPlaylist or the token parameters
+        const scriptTag = $("script").filter((_, el) => {
+            const content = $(el).html() || '';
+            return content.includes('window.masterPlaylist') || (content.includes("'token':") && content.includes("'expires':"));
+        }).first();
+
+        const scriptContent = scriptTag.html() || '';
+        if (!scriptContent) throw new Error("VixSrc player script not found.");
+
+        // Extraction based on the new masterPlaylist structure
+        // window.masterPlaylist = { params: { 'token': '...', 'expires': '...', 'asn': '...' }, url: '...' }
+        let token = '';
+        let expires = '';
+        let asn = '';
+        let serverUrl = '';
+
+        const tokenMatch = scriptContent.match(/['"]token['"]\s*:\s*['"]([^'"]+)['"]/);
+        const expiresMatch = scriptContent.match(/['"]expires['"]\s*:\s*['"](\d+)['"]/);
+        const asnMatch = scriptContent.match(/['"]asn['"]\s*:\s*['"]([^'"]*)['"]/);
+        const urlMatch = scriptContent.match(/url\s*:\s*['"]([^'"]+)['"]/);
+
+        if (tokenMatch) token = tokenMatch[1];
+        if (expiresMatch) expires = expiresMatch[1];
+        if (asnMatch) asn = asnMatch[1];
+        if (urlMatch) serverUrl = urlMatch[1].replace(/\\/g, '');
+
+        if (!token || !expires || !serverUrl) {
+            throw new Error("Failed to extract mandatory parameters from VixSrc script.");
+        }
+
+        // 3. Construct final stream URL
+        const canPlayFHD = /window\.canPlayFHD\s*=\s*true/i.test(scriptContent) || /canPlayFHD/.test(scriptContent);
+        
+        const urlObj = new URL(serverUrl);
+        const lang = preferredLang || 'en';
+        urlObj.searchParams.set('token', token);
+        urlObj.searchParams.set('expires', expires);
+        urlObj.searchParams.set('lang', lang);
+        if (asn) urlObj.searchParams.set('asn', asn);
+        if (canPlayFHD) urlObj.searchParams.set('h', '1');
+
+        let finalStreamUrl = urlObj.toString();
+
+        // 4. Ensure .m3u8 extension in the path if necessary (as seen in the original code)
+        const parts = urlObj.pathname.split('/');
+        const pIdx = parts.indexOf('playlist');
+        if (pIdx !== -1 && pIdx < parts.length - 1) {
+            let nextPart = parts[pIdx + 1];
+            if (nextPart && !nextPart.includes('.')) {
+                parts[pIdx + 1] = nextPart + '.m3u8';
+                urlObj.pathname = parts.join('/');
+                finalStreamUrl = urlObj.toString();
+            }
+        }
+
+        console.log(`[VixSrc] Final stream URL: ${finalStreamUrl}`);
+
+        // 5. Wrap through local HLS proxy
+        const proxyToken = makeProxyToken(finalStreamUrl, VIXSRC_HEADERS);
+
+        return [{
+            name: "SC 🤌",
+            title: "VIX 1080 🤌",
+            url: `/proxy/hls/manifest.m3u8?token=${proxyToken}`
+        }];
+
+    } catch(err) {
+        console.error("VixSrc Stream extraction error", err);
+        return [];
     }
-    
-    // If x-forwarded-host is a list (from multiple proxies), take the first one
-    if (host && host.includes(',')) {
-        host = host.split(',')[0].trim();
-    }
-    
-    return `${protocol}://${host}`;
 }
