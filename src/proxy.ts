@@ -14,7 +14,9 @@ export const VIXCLOUD_HEADERS: Record<string, string> = {
     'Accept': '*/*',
     'Connection': 'keep-alive',
     'Cache-Control': 'no-cache',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
+    'Referer': 'https://vixcloud.co/',
+    'Origin': 'https://vixcloud.co'
 };
 
 export function makeProxyToken(url: string, headers: Record<string, string>, ttlMs: number = 6 * 3600 * 1000): string {
