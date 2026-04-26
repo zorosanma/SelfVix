@@ -3,6 +3,9 @@ import { request } from 'undici';
 import { config } from './config';
 import { makeProxyToken, VIXSRC_HEADERS } from './proxy';
 
+/**
+ * Resolve the current embed URL through VixSrc JSON API.
+ */
 async function getEmbedUrlFromApi(tmdbId: string, season?: string, episode?: string): Promise<string | null> {
     const siteOrigin = `https://${config.vixsrcDomain}`;
     let apiPath = "";
@@ -21,12 +24,7 @@ async function getEmbedUrlFromApi(tmdbId: string, season?: string, episode?: str
             headers: {
                 ...VIXSRC_HEADERS,
                 'Accept': 'application/json, text/plain, */*',
-                'Referer': `${siteOrigin}/`,
-                'Origin': siteOrigin,
-                'X-Requested-With': 'XMLHttpRequest',
-                'Sec-Fetch-Dest': 'empty',
-                'Sec-Fetch-Mode': 'cors',
-                'Sec-Fetch-Site': 'same-origin',
+                'Referer': `${siteOrigin}/`
             }
         });
 
@@ -52,7 +50,8 @@ async function getEmbedUrlFromApi(tmdbId: string, season?: string, episode?: str
 export async function getVixSrcStreams(tmdbId: string, season?: string, episode?: string): Promise<{name: string, title: string, url: string}[]> {
     try {
         const siteOrigin = `https://${config.vixsrcDomain}`;
-
+        
+        // 1. Resolve embed URL through API
         const embedUrl = await getEmbedUrlFromApi(tmdbId, season, episode);
         if (!embedUrl) {
             console.log("[VixSrc] Failed to resolve embed URL");
@@ -61,6 +60,7 @@ export async function getVixSrcStreams(tmdbId: string, season?: string, episode?
 
         console.log("[VixSrc] Embed URL resolved:", embedUrl);
 
+        // 2. Fetch embed page and extract parameters
         const { body, statusCode } = await request(embedUrl, {
             headers: {
                 ...VIXSRC_HEADERS,
@@ -76,6 +76,7 @@ export async function getVixSrcStreams(tmdbId: string, season?: string, episode?
         const html = await body.text();
         const $ = cheerio.load(html);
 
+        // Find the script containing window.masterPlaylist or the token parameters
         const scriptTag = $("script").filter((_, el) => {
             const content = $(el).html() || '';
             return content.includes('window.masterPlaylist') || (content.includes("'token':") && content.includes("'expires':"));
@@ -84,6 +85,8 @@ export async function getVixSrcStreams(tmdbId: string, season?: string, episode?
         const scriptContent = scriptTag.html() || '';
         if (!scriptContent) throw new Error("VixSrc player script not found.");
 
+        // Extraction based on the new masterPlaylist structure
+        // window.masterPlaylist = { params: { 'token': '...', 'expires': '...', 'asn': '...' }, url: '...' }
         let token = '';
         let expires = '';
         let asn = '';
@@ -103,8 +106,9 @@ export async function getVixSrcStreams(tmdbId: string, season?: string, episode?
             throw new Error("Failed to extract mandatory parameters from VixSrc script.");
         }
 
+        // 3. Construct final stream URL
         const canPlayFHD = /window\.canPlayFHD\s*=\s*true/i.test(scriptContent) || /canPlayFHD/.test(scriptContent);
-
+        
         const urlObj = new URL(serverUrl);
         urlObj.searchParams.set('token', token);
         urlObj.searchParams.set('expires', expires);
@@ -114,6 +118,7 @@ export async function getVixSrcStreams(tmdbId: string, season?: string, episode?
 
         let finalStreamUrl = urlObj.toString();
 
+        // 4. Ensure .m3u8 extension in the path if necessary (as seen in the original code)
         const parts = urlObj.pathname.split('/');
         const pIdx = parts.indexOf('playlist');
         if (pIdx !== -1 && pIdx < parts.length - 1) {
@@ -127,6 +132,7 @@ export async function getVixSrcStreams(tmdbId: string, season?: string, episode?
 
         console.log(`[VixSrc] Final stream URL: ${finalStreamUrl}`);
 
+        // 5. Wrap through local HLS proxy
         const proxyToken = makeProxyToken(finalStreamUrl, VIXSRC_HEADERS);
 
         return [{
