@@ -139,14 +139,12 @@ app.get('/proxy/hls/manifest.m3u8', async (req: any, res: any) => {
         if (!upstream) return res.status(400).send('#EXTM3U\n# Missing upstream URL');
         if (expire && Date.now() > expire) return res.status(410).send('#EXTM3U\n# Token expired');
 
-        console.log(`[HLS Proxy] Fetching manifest: ${upstream}`);
+        console.log(`[HLS Proxy] Fetching: ${upstream.substring(0, 100)}...`);
 
-        const { body, statusCode, headers: respHeaders } = await request(upstream, { headers });
+        const { body, statusCode } = await request(upstream, { headers });
         if (statusCode !== 200) {
-            console.log(`[HLS Proxy] Upstream error ${statusCode} for ${upstream}`);
             return res.status(502).send(`#EXTM3U\n# Upstream error ${statusCode}`);
         }
-        console.log(`[HLS Proxy] Manifest fetched successfully, content-type: ${respHeaders['content-type']}`);
 
         const text = await body.text();
         const addonBase = getAddonBase(req);
